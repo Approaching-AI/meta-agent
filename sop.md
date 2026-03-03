@@ -21,3 +21,8 @@ For example, an SOP step says "clone a GitHub repo." A script would simply run `
 - Handle any other unexpected environmental issue.
 
 In short, SOPs leverage the agent's ability to reason about and adapt to context — something a static script cannot do.
+
+## When to Create SOPs
+
+- The **human decides** when to create an SOP. The agent may suggest that a certain workflow is worth formalizing, but the decision is the human's.
+- Creating SOPs should happen in a **dedicated session**, because SOPs often have dependencies on each other and need to be designed as a coherent set rather than in isolation.
