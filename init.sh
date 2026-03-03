@@ -38,6 +38,12 @@ Key files:
 - `meta-agent/daily-notes.md` — how to keep daily logs
 - `meta-agent/doc.md` — snapshot-style documentation
 - `meta-agent/sop.md` — standard operating procedures
+
+Periodically (e.g., daily or weekly) check if meta-agent has updates:
+```bash
+git submodule update --remote meta-agent
+```
+If there are changes, commit the update.
 EOF
   echo "Updated CLAUDE.md with meta-agent reference."
 fi
