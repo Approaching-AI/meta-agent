@@ -57,9 +57,23 @@ SOP 的创建由人决定，agent 可以建议。
 
 ## 工作流程
 
-Agent 由 prompt 启动，prompt 来自用户或自动化系统，内容是具体的工作任务。Agent 不需要启动时读取所有 daily notes 和 doc，而是根据当前任务按需查阅，自己判断该读什么。
+Agent 由 prompt 启动，prompt 来自用户、自动化系统或 handoff 文件，内容是具体的工作任务。Agent 不需要启动时读取所有 daily notes 和 doc，而是根据当前任务按需查阅，自己判断该读什么。
 
 信息沉淀的路径：daily notes 积累实践经验，再提炼为 SOP。Doc 独立积累，来源不限。
+
+## Session 开始流程
+
+每次 agent session 开始时，执行以下流程：
+
+### 1. 检查 handoff 文件
+
+检查 `handoff/*.pending.md`，如果存在 pending 的 handoff 文件，读取内容作为本次 session 的任务指引。
+
+> **开放问题**：如果同时存在多个 pending 文件，agent 根据具体情况自行判断如何处理（全部执行、按优先级选择等），待后续积累经验后再标准化。
+
+### 2. 如果没有 pending handoff
+
+等待用户给出指令。
 
 ## Session 结束流程
 
@@ -89,7 +103,7 @@ Session 结束时，agent 应该主动判断：当前的工作是否已经完成
 - 未完成的部分是否可以通过阅读 daily notes 和 doc 获取足够的上下文
 - 是否有明确的下一步可以执行
 
-如果判断需要后续 agent 接手，agent 应该生成一段 **handoff prompt**。这段 prompt 将用于启动下一个 agent session，内容包括：
+如果判断需要后续 agent 接手，agent 将 handoff prompt 写入 `handoff/YYYY-MM-DD-<简短描述>.pending.md`。文件内容纯粹是 prompt，不加 frontmatter 或其他格式。Prompt 包含：
 
 - 任务背景（简要，因为详细上下文在 daily notes 里）
 - 当前进度
@@ -98,7 +112,11 @@ Session 结束时，agent 应该主动判断：当前的工作是否已经完成
 
 后续 agent 运行在同一个上下文体（同一个文件夹）中，能够访问 daily notes、doc 和所有历史记录。所以 handoff prompt 不需要重复这些内容，只需要指明方向。
 
-如果任务已经完成，或者后续工作需要人类介入（比如需要做决策、需要外部资源），则不生成 handoff prompt，改为在 daily notes 中说明情况。
+如果任务已经完成，或者后续工作需要人类介入（比如需要做决策、需要外部资源），则不生成 handoff 文件，改为在 daily notes 中说明情况。
+
+## Handoff 完成标记
+
+当 agent 完成了某个 handoff 任务时，将对应文件从 `.pending.md` 重命名为 `.done.md`。这不限于特定流程阶段——agent 在工作过程中任何时候判断任务已完成，就执行 rename。
 
 ## 使用技巧
 
@@ -120,15 +138,19 @@ Session 结束时，agent 应该主动判断：当前的工作是否已经完成
 
 **开始工作：让 agent 接续之前的任务**
 
-> 看一下 daily-notes 里最近的记录，继续完成 XXX 的工作。
+> 检查 handoff 目录，有 pending 的任务就继续。
 
-Agent 会自己去翻 daily notes，找到上次的进度，然后接着干。
+Agent 会 glob `handoff/*.pending.md`，读取 pending 的 handoff prompt，然后按指引工作。如果没有 pending 文件，等待用户指令。
+
+也可以用传统方式：
+
+> 看一下 daily-notes 里最近的记录，继续完成 XXX 的工作。
 
 **工作结束：让 agent 收尾**
 
-> 把这次的工作总结记录到 daily notes，然后 git commit push。判断一下是否需要后续 agent 接手，需要的话给出 prompt。
+> 结束 session。
 
-Agent 按照 session 结束流程执行：总结写入 daily notes → commit push → 判断是否生成 handoff prompt。
+Agent 按照 session 结束流程执行：总结写入 daily notes → commit push → 判断是否需要生成 handoff 文件。
 
 **中途发现重要信息：立刻记录**
 
