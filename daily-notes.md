@@ -1,6 +1,6 @@
 # Daily Notes
 
-Agent should maintain a history log. To facilitate collaboration with humans, consider using a **daily notes** approach: create a `daily-notes/` folder and organize records by date.
+Agent should maintain a history log. To facilitate collaboration with humans, consider using a **daily notes** approach: create a `daily-notes/` folder and organize records by date。文件名格式为 `YYYY-MM-DD.md` 或 `YYYY-MM-DD-<简要主题>.md`，可根据内容选择是否加主题后缀。
 
 ## Principles
 
