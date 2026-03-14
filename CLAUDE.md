@@ -11,9 +11,12 @@ Key references:
 ## Session 开始流程
 
 1. **检查 `handoff/*.pending.md`** — 如果有 pending 的 handoff 文件，读取内容作为本次 session 的任务指引。
-2. **如果没有 pending handoff** — 等待用户给出指令。
+2. **认领 handoff** — 立即将选中的文件从 `.pending.md` 重命名为 `.active.md`，然后 commit & push，防止其他 session 重复认领。
+3. **如果没有 pending handoff** — 等待用户给出指令。
 
 > **开放问题**：如果同时存在多个 pending 文件，agent 根据具体情况自行判断如何处理（全部执行、按优先级选择等），待后续积累经验后再标准化。
+>
+> **并发说明**：rename + push 之间仍有短暂竞争窗口，但对于当前使用频率足够。如果未来出现实际冲突，再引入更强的锁机制。
 
 ## Session 结束流程
 
@@ -23,6 +26,10 @@ Key references:
 2. **Commit & push** — 对本仓库执行 git commit 和 push，确保所有变更（daily notes、doc、代码等）持久化到远端。
 3. **判断是否需要后续 agent 接手** — 如果任务未完成且后续可由 agent 独立推进，将 handoff prompt 写入 `handoff/YYYY-MM-DD-<简短描述>.pending.md`。文件内容纯粹是 prompt，不加 frontmatter 或其他格式。Prompt 包含：任务背景（简要）、当前进度、下一步指令、需要注意的风险。后续 agent 运行在同一个仓库中，能访问 daily notes 和所有记录，所以 prompt 只需指明方向，不需重复已有上下文。如果任务已完成或需要人类介入，不生成 handoff 文件，在 daily notes 中说明即可。
 
-## Handoff 完成标记
+## Handoff 状态流转
 
-当 agent 完成了某个 handoff 任务时，将对应文件从 `.pending.md` 重命名为 `.done.md`。这不限于特定流程阶段——agent 在工作过程中任何时候判断任务已完成，就执行 rename。
+文件后缀表示状态：`.pending.md` → `.active.md` → `.done.md`
+
+- **pending → active**：session 认领时重命名，立即 commit & push。
+- **active → done**：任务完成时重命名。不限于特定流程阶段——agent 在工作过程中任何时候判断任务已完成，就执行 rename。
+- **其他 session 看到 `.active.md`**：说明已有 session 在处理，不要重复认领。
