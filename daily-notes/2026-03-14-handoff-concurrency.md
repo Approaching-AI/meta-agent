@@ -12,4 +12,10 @@
 
 **备注**：
 - rename 到 push 之间仍有短暂竞争窗口，当前频率下可接受，记录在 CLAUDE.md 中。
-- 任务已完成，不需要后续 agent 接手。
+
+**补充修改**：
+- 用户反馈 daily notes 文件名可以带主题后缀，不限于纯日期。
+- 将本文件从 `2026-03-14.md` 重命名为 `2026-03-14-handoff-concurrency.md`。
+- 更新 `daily-notes.md` 补充命名惯例：`YYYY-MM-DD.md` 或 `YYYY-MM-DD-<简要主题>.md`。
+
+任务已完成，不需要后续 agent 接手。
