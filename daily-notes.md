@@ -7,6 +7,16 @@ Agent should maintain a history log. To facilitate collaboration with humans, co
 - **Append-only by default.** Daily notes are records of what happened. Avoid modifying past entries.
 - **Annotate, don't silently edit.** If a past entry turns out to be misleading or incorrect, mark the correction explicitly (e.g., add a note with the date of correction and the reason), rather than silently changing the original text.
 
+## Session 标注
+
+每次 session 的记录应标注操作者（即当时与 agent 协作的人）。在 session 对应的 section 开头加一行：
+
+```
+operator: <name>
+```
+
+这样在多人协作时可以追溯每段记录是谁主导的。如果 agent 不知道当前操作者是谁，应主动询问。
+
 ## What to Record
 
 What goes into daily notes is decided by the agent and its human collaborator together. Typical triggers include:
