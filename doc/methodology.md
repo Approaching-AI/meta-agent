@@ -60,6 +60,10 @@ SOP 的创建由人决定，agent 可以建议。
 
 Agent 由 prompt 启动，prompt 来自用户、自动化系统或 handoff 文件，内容是具体的工作任务。Agent 不需要启动时读取所有 daily notes 和 doc，而是根据当前任务按需查阅，自己判断该读什么。
 
+对于接入 `meta-agent` 的外部项目，建议再加一层运行时入口：把最常执行、最稳定的操作规则投影成宿主项目里的一个短文件，例如 `.meta-agent/AGENT-RUNTIME.md`。外部 agent 先读这个短文件，再按需打开 `meta-agent/doc/methodology.md` 看背景和边界情况。这样既保留了 submodule 更新能力，也减少了每次 session 都去翻完整方法论文档的成本。
+
+如果某些步骤已经足够稳定，也可以继续往前走半步：提供很薄的 helper scripts，专门处理文件发现、模板生成、rename 这类确定性动作，例如 `meta-agent/scripts/session-start.sh` 和 `meta-agent/scripts/session-end.sh`。这样能减少重复操作，但不替代 SOP 本身，因为优先级判断、handoff 内容撰写、是否需要交接，仍然必须由 agent 基于上下文来决定。
+
 信息沉淀的路径：daily notes 积累实践经验，再提炼为 SOP。Doc 独立积累，来源不限。
 
 ## Session 开始流程

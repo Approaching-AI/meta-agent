@@ -22,7 +22,10 @@ fi
 
 # Append reference to CLAUDE.md if not already present
 CLAUDE_MD="$REPO_ROOT/CLAUDE.md"
-MARKER="meta-agent/"
+MARKER=".meta-agent/AGENT-RUNTIME.md"
+
+# Sync the compact runtime guide into the host repo so agents can read a local file
+bash "$REPO_ROOT/meta-agent/scripts/sync-runtime.sh"
 
 if [ -f "$CLAUDE_MD" ] && grep -q "$MARKER" "$CLAUDE_MD"; then
   echo "CLAUDE.md already references meta-agent."
@@ -32,11 +35,14 @@ else
 
 ## Meta Agent Guidelines
 
-Read and follow the guidelines in `meta-agent/CLAUDE.md`. Detailed methodology is in `meta-agent/doc/methodology.md`.
+Read and follow the runtime guide in `.meta-agent/AGENT-RUNTIME.md`.
+
+Only open `meta-agent/doc/methodology.md` when you need extra rationale, examples, or edge-case guidance.
 
 Periodically (e.g., daily or weekly) check if meta-agent has updates:
 ```bash
 git submodule update --remote meta-agent
+bash meta-agent/scripts/sync-runtime.sh
 ```
 If there are changes, commit the update.
 EOF
