@@ -3,6 +3,7 @@
 These are advisory guidelines — adapt them to the current project context.
 
 Key references:
+- `runtime/AGENT-RUNTIME.md` — compact execution rules for external agents
 - `daily-notes.md` — how to keep daily logs
 - `doc.md` — snapshot-style documentation
 - `sop.md` — standard operating procedures
