@@ -37,7 +37,7 @@ Notes:
 
 Run this flow when the human explicitly asks to end the session.
 
-1. Append a summary to today's daily notes.
+1. Append a summary to today's `meta-log/`.
 2. Include `operator: <name>` at the start of the session entry. This must be the human collaborator for the current session. If unknown, ask explicitly instead of inferring from git config or other metadata.
 3. Record what was done, important conclusions, open problems, and the next step.
 4. Commit and push the repository so notes, docs, code, and handoff state are persisted.
@@ -45,7 +45,7 @@ Run this flow when the human explicitly asks to end the session.
 6. If yes, create `handoff/YYYY-MM-DD-<short-description>.pending.md`.
 7. The handoff file should contain only a prompt with: brief background, current progress, the next instruction, and key risks.
 8. If the current handoff task is complete, rename its file from `.active.md` to `.done.md`.
-9. If the work is complete or requires human input next, do not create a new handoff file. Say so in daily notes.
+9. If the work is complete or requires human input next, do not create a new handoff file. Say so in `meta-log/`.
 
 Do not rely on a session-end helper script for this flow. Session end requires contextual judgment, a real summary, and explicit operator confirmation.
 
