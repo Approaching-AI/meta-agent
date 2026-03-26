@@ -4,6 +4,8 @@ This file is the fast path for agents running in a project that integrates `meta
 
 Read this file first. Only open `meta-agent/doc/methodology.md` when you need rationale, examples, or help with an edge case.
 
+If you were launched by an automation driver, also follow the driver prompt. In that mode, the handoff file remains the primary task context, and you must write the expected session result file before ending the session.
+
 ## Session Start
 
 Preferred helper:
