@@ -30,5 +30,4 @@ Useful helpers in the host repo:
 
 ```bash
 bash meta-agent/scripts/session-start.sh
-bash meta-agent/scripts/session-end.sh
 ```

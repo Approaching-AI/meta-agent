@@ -37,24 +37,8 @@ Notes:
 
 Run this flow when the human explicitly asks to end the session.
 
-Preferred helper:
-
-```bash
-bash meta-agent/scripts/session-end.sh
-```
-
-Useful variants:
-
-```bash
-bash meta-agent/scripts/session-end.sh --append-daily --operator <name>
-bash meta-agent/scripts/session-end.sh --create-handoff <short-description>
-bash meta-agent/scripts/session-end.sh --complete-current
-```
-
-These helpers only prepare files and deterministic renames. The agent still decides whether a handoff is needed, what summary to write, and when to commit or push.
-
 1. Append a summary to today's daily notes.
-2. Include `operator: <name>` at the start of the session entry. If unknown, ask.
+2. Include `operator: <name>` at the start of the session entry. This must be the human collaborator for the current session. If unknown, ask explicitly instead of inferring from git config or other metadata.
 3. Record what was done, important conclusions, open problems, and the next step.
 4. Commit and push the repository so notes, docs, code, and handoff state are persisted.
 5. Decide whether another agent session can continue the remaining work.
@@ -62,6 +46,8 @@ These helpers only prepare files and deterministic renames. The agent still deci
 7. The handoff file should contain only a prompt with: brief background, current progress, the next instruction, and key risks.
 8. If the current handoff task is complete, rename its file from `.active.md` to `.done.md`.
 9. If the work is complete or requires human input next, do not create a new handoff file. Say so in daily notes.
+
+Do not rely on a session-end helper script for this flow. Session end requires contextual judgment, a real summary, and explicit operator confirmation.
 
 ## State Model
 
