@@ -33,13 +33,20 @@ Notes:
 Run this flow before writing the final `session-result.json`.
 
 1. Append a summary to today's `meta-log/`.
-2. Include `operator: <name>` at the start of the session entry. This must be the human collaborator for the current session. If unknown, ask explicitly instead of inferring from git config or other metadata.
+2. Include `operator: <name>` at the start of the session entry. This must be the human collaborator for the current session. If the automation driver provided an operator value, use that exact value. Only ask explicitly when no operator was provided.
 3. Record what was done, important conclusions, open problems, and the next step.
 4. Commit and push the repository so notes, docs, code, and handoff state are persisted.
 5. Decide whether another agent session can continue the remaining work.
 6. If yes, create a new handoff file under `handoff/`.
 7. The handoff file should contain only a prompt with: brief background, current progress, the next instruction, and key risks.
 8. If the work is complete or requires human input next, do not create a new handoff file. Say so in `meta-log/`.
+
+If the automation setup provides both `questions/` and `answers/` directories:
+
+- ask humans by writing files under `questions/`
+- consume human replies from `answers/`
+- use the same basename for a question and its answer
+- check for a matching answer before asking the same question again or declaring a hard block
 
 The session-result file is the final driver-facing acknowledgement after this flow is complete. It is not a substitute for the flow.
 

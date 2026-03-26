@@ -22,10 +22,12 @@ class DriverError(Exception):
 
 @dataclass
 class SessionInput:
+    operator: str | None
     goal_file: Path | None
     handoff_file: Path | None
     runtime_guide_file: Path | None
     open_questions_dir: Path | None
+    open_answers_dir: Path | None
     additional_context_files: list[Path]
     additional_instructions: str | None
     session_result_file: Path | None
@@ -63,6 +65,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_session.add_argument("--agent", required=True, help="Adapter name, for example: codex")
     run_session.add_argument("--repo", required=True, help="Repository root for the session")
     run_session.add_argument(
+        "--operator",
+        help="Human operator name for this session; overrides the value in session-input.json",
+    )
+    run_session.add_argument(
         "--input",
         required=True,
         help="Path to a session-input.json file",
@@ -85,6 +91,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_loop.add_argument("--agent", required=True, help="Adapter name, for example: codex")
     run_loop.add_argument("--repo", required=True, help="Repository root for the loop")
     run_loop.add_argument(
+        "--operator",
+        help="Human operator name injected into every session in the loop",
+    )
+    run_loop.add_argument(
         "--goal-file",
         default="GOAL.md",
         help="Repo-relative goal file used when no queued handoff exists on the first session",
@@ -98,6 +108,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--questions-dir",
         default="questions",
         help="Repo-relative directory for asynchronous human questions",
+    )
+    run_loop.add_argument(
+        "--answers-dir",
+        default="answers",
+        help="Repo-relative directory where humans write answers for future sessions",
     )
     run_loop.add_argument(
         "--runs-dir",
@@ -163,8 +178,8 @@ def run_session(args: argparse.Namespace) -> int:
     run_dir = Path(args.run_dir).expanduser().resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    session_input = load_session_input(input_file, repo)
-    _, artifacts = execute_session(
+    session_input = load_session_input(input_file, repo, operator_override=args.operator)
+    result, artifacts = execute_session(
         agent=args.agent,
         repo=repo,
         session_input=session_input,
@@ -180,6 +195,7 @@ def run_session(args: argparse.Namespace) -> int:
         print(shell_join(artifacts.command))
         return 0
 
+    print_human_feedback(repo, result, session_input.open_answers_dir)
     print(f"Session completed. Result file: {artifacts.session_result_file}")
     return 0
 
@@ -195,6 +211,7 @@ def run_loop(args: argparse.Namespace) -> int:
     goal_file = resolve_optional_repo_file(repo, args.goal_file)
     runtime_guide_file = resolve_optional_repo_file(repo, args.runtime_guide_file)
     questions_dir = resolve_optional_repo_dir(repo, args.questions_dir)
+    answers_dir = resolve_optional_repo_dir(repo, args.answers_dir)
     additional_context_files = [
         resolve_required_repo_file(repo, item) for item in args.additional_context_file
     ]
@@ -228,6 +245,8 @@ def run_loop(args: argparse.Namespace) -> int:
             handoff_file=current_session_handoff,
             runtime_guide_file=runtime_guide_file,
             questions_dir=questions_dir,
+            answers_dir=answers_dir,
+            operator=args.operator,
             additional_context_files=additional_context_files,
             additional_instructions=args.additional_instructions,
             run_dir=run_dir,
@@ -271,6 +290,7 @@ def run_loop(args: argparse.Namespace) -> int:
 
         outcome = result["outcome"]
         print(f"Session {session_count} outcome: {outcome}")
+        print_human_feedback(repo, result, answers_dir)
 
         if outcome == "failed":
             raise DriverError(
@@ -298,7 +318,9 @@ def run_loop(args: argparse.Namespace) -> int:
     return 3
 
 
-def load_session_input(input_file: Path, repo: Path) -> SessionInput:
+def load_session_input(
+    input_file: Path, repo: Path, operator_override: str | None = None
+) -> SessionInput:
     try:
         raw = json.loads(input_file.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -330,11 +352,23 @@ def load_session_input(input_file: Path, repo: Path) -> SessionInput:
     if additional_instructions is not None and not isinstance(additional_instructions, str):
         raise DriverError("additional_instructions must be a string when provided")
 
+    operator = raw.get("operator")
+    if operator is not None and (not isinstance(operator, str) or not operator.strip()):
+        raise DriverError("operator must be a non-empty string when provided")
+    if operator is not None:
+        operator = operator.strip()
+    if operator_override is not None:
+        if not operator_override.strip():
+            raise DriverError("--operator must be a non-empty string")
+        operator = operator_override.strip()
+
     result = SessionInput(
+        operator=operator,
         goal_file=resolve_repo_path("goal_file"),
         handoff_file=resolve_repo_path("handoff_file"),
         runtime_guide_file=resolve_repo_path("runtime_guide_file"),
         open_questions_dir=resolve_repo_path("open_questions_dir"),
+        open_answers_dir=resolve_repo_path("open_answers_dir"),
         additional_context_files=additional_context_files,
         additional_instructions=additional_instructions,
         session_result_file=resolve_repo_path("session_result_file"),
@@ -347,6 +381,7 @@ def load_session_input(input_file: Path, repo: Path) -> SessionInput:
     check_optional_path(result.handoff_file, "handoff_file")
     check_optional_path(result.runtime_guide_file, "runtime_guide_file")
     check_optional_dir(result.open_questions_dir, "open_questions_dir")
+    check_optional_dir(result.open_answers_dir, "open_answers_dir")
     for path in result.additional_context_files:
         if not path.is_file():
             raise DriverError(f"additional context file does not exist: {path}")
@@ -423,6 +458,12 @@ def build_prompt(repo: Path, session_input: SessionInput, session_result_file: P
         lines.append(
             f"- Existing open questions directory: `{display_repo_relative(repo, session_input.open_questions_dir)}`"
         )
+    if session_input.open_answers_dir is not None:
+        lines.append(
+            f"- Existing human answers directory: `{display_repo_relative(repo, session_input.open_answers_dir)}`"
+        )
+    if session_input.operator is not None:
+        lines.append(f"- Operator for this session: `{session_input.operator}`")
     for path in session_input.additional_context_files:
         lines.append(f"- Additional context: `{display_repo_relative(repo, path)}`")
 
@@ -448,6 +489,31 @@ def build_prompt(repo: Path, session_input: SessionInput, session_result_file: P
             "- `block_reason` is optional unless `outcome` is `hard_blocked`.",
         ]
     )
+
+    if session_input.operator is not None:
+        lines.extend(
+            [
+                "",
+                "Operator handling:",
+                f"- The driver already provided the operator for this session: `{session_input.operator}`.",
+                "- Use that exact value anywhere the session-end SOP requires `operator: <name>`.",
+                "- Do not open a question just to ask for operator confirmation unless a repository rule explicitly requires a different operator value and explains why.",
+            ]
+        )
+
+    if session_input.open_questions_dir is not None and session_input.open_answers_dir is not None:
+        lines.extend(
+            [
+                "",
+                "Question and answer handling:",
+                f"- Human questions belong under `{display_repo_relative(repo, session_input.open_questions_dir)}`.",
+                f"- Human answers belong under `{display_repo_relative(repo, session_input.open_answers_dir)}`.",
+                "- Before asking a new human question or declaring `hard_blocked`, first check whether a matching answer already exists.",
+                "- The expected reply path for a question is the same basename under the answers directory.",
+                "- Example: `questions/operator-confirmation.md` is answered by `answers/operator-confirmation.md`.",
+                "- Treat matching answer files as authoritative human input for later sessions.",
+            ]
+        )
 
     if session_input.additional_instructions:
         lines.extend(
@@ -504,6 +570,7 @@ def execute_session(
 
     metadata = {
         "agent": agent,
+        "operator": session_input.operator,
         "repo": str(repo),
         "input_file": str(input_file),
         "run_dir": str(run_dir),
@@ -563,11 +630,15 @@ def build_loop_session_input_payload(
     handoff_file: Path | None,
     runtime_guide_file: Path | None,
     questions_dir: Path | None,
+    answers_dir: Path | None,
+    operator: str | None,
     additional_context_files: list[Path],
     additional_instructions: str | None,
     run_dir: Path,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {}
+    if operator is not None:
+        payload["operator"] = operator
     if goal_file is not None:
         payload["goal_file"] = display_repo_relative(repo, goal_file)
     if handoff_file is not None:
@@ -576,6 +647,8 @@ def build_loop_session_input_payload(
         payload["runtime_guide_file"] = display_repo_relative(repo, runtime_guide_file)
     if questions_dir is not None:
         payload["open_questions_dir"] = display_repo_relative(repo, questions_dir)
+    if answers_dir is not None:
+        payload["open_answers_dir"] = display_repo_relative(repo, answers_dir)
     if additional_context_files:
         payload["additional_context_files"] = [
             display_repo_relative(repo, item) for item in additional_context_files
@@ -744,6 +817,22 @@ def display_repo_relative(repo: Path, path: Path) -> str:
         return str(path.relative_to(repo))
     except ValueError:
         return str(path)
+
+
+def print_human_feedback(repo: Path, result: dict[str, Any], answers_dir: Path | None) -> None:
+    question_files = result.get("question_files") or []
+    if question_files:
+        print("Human input requested:")
+        for question_file in question_files:
+            print(f"- Question: {question_file}")
+            if answers_dir is not None:
+                expected_answer = answers_dir / Path(question_file).name
+                print(
+                    f"  Answer by creating: {display_repo_relative(repo, expected_answer)}"
+                )
+
+    if result["outcome"] == "hard_blocked":
+        print("Human attention required before the loop can continue.")
 
 
 def build_agent_command(
