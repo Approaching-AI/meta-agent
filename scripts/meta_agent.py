@@ -42,6 +42,13 @@ class SessionRunArtifacts:
     command: list[str]
 
 
+@dataclass
+class HandoffReservation:
+    queued_path: Path
+    inflight_path: Path
+    history_path: Path
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="meta-agent",
@@ -80,7 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_loop.add_argument(
         "--goal-file",
         default="GOAL.md",
-        help="Repo-relative goal file used when no pending handoff exists on the first session",
+        help="Repo-relative goal file used when no queued handoff exists on the first session",
     )
     run_loop.add_argument(
         "--runtime-guide-file",
@@ -193,24 +200,32 @@ def run_loop(args: argparse.Namespace) -> int:
     ]
     runs_dir = (repo / args.runs_dir).resolve()
     runs_dir.mkdir(parents=True, exist_ok=True)
+    handoff_dirs = ensure_handoff_dirs(repo)
+    recover_inflight_handoffs(repo, runs_dir, handoff_dirs)
 
     session_count = 0
     used_goal_without_handoff = False
 
     while session_count < args.max_sessions:
-        current_handoff = select_pending_handoff(repo)
+        current_handoff = select_queued_handoff(handoff_dirs["queue"])
         if current_handoff is None:
             if used_goal_without_handoff or goal_file is None:
-                print("No pending handoff remains. Loop stopped.")
+                print("No queued handoff remains. Loop stopped.")
                 return 0
             used_goal_without_handoff = True
 
         session_count += 1
         run_dir = allocate_run_dir(runs_dir, session_count)
+        reservation: HandoffReservation | None = None
+        current_session_handoff = current_handoff
+        if current_handoff is not None and not args.dry_run:
+            reservation = reserve_handoff(current_handoff, handoff_dirs)
+            current_session_handoff = reservation.inflight_path
+
         session_input_payload = build_loop_session_input_payload(
             repo=repo,
             goal_file=goal_file,
-            handoff_file=current_handoff,
+            handoff_file=current_session_handoff,
             runtime_guide_file=runtime_guide_file,
             questions_dir=questions_dir,
             additional_context_files=additional_context_files,
@@ -222,17 +237,27 @@ def run_loop(args: argparse.Namespace) -> int:
         input_file.write_text(json.dumps(session_input_payload, indent=2) + "\n", encoding="utf-8")
         session_input = load_session_input(input_file, repo)
 
-        selected = display_repo_relative(repo, current_handoff) if current_handoff else "<goal-only>"
+        selected = (
+            display_repo_relative(repo, current_session_handoff)
+            if current_session_handoff
+            else "<goal-only>"
+        )
         print(f"Starting session {session_count}: {selected}")
 
-        result, artifacts = execute_session(
-            agent=args.agent,
-            repo=repo,
-            session_input=session_input,
-            input_file=input_file,
-            run_dir=run_dir,
-            dry_run=args.dry_run,
-        )
+        try:
+            result, artifacts = execute_session(
+                agent=args.agent,
+                repo=repo,
+                session_input=session_input,
+                input_file=input_file,
+                run_dir=run_dir,
+                dry_run=args.dry_run,
+                extra_metadata=build_handoff_metadata(repo, reservation),
+            )
+        except DriverError:
+            if reservation is not None:
+                recover_single_inflight_handoff(repo, reservation, run_dir)
+            raise
 
         if args.dry_run:
             print(f"Prompt written to {artifacts.prompt_file}")
@@ -240,6 +265,9 @@ def run_loop(args: argparse.Namespace) -> int:
             print("Planned command:")
             print(shell_join(artifacts.command))
             return 0
+
+        if reservation is not None:
+            archive_reserved_handoff(reservation)
 
         outcome = result["outcome"]
         print(f"Session {session_count} outcome: {outcome}")
@@ -253,17 +281,17 @@ def run_loop(args: argparse.Namespace) -> int:
             print(f"Loop stopped: {result['block_reason']}")
             return 2
 
-        pending_after = list_pending_handoffs(repo)
-        if outcome == "continue" and not pending_after:
+        queued_after = list_queued_handoffs(handoff_dirs["queue"])
+        if outcome == "continue" and not queued_after:
             raise DriverError(
-                f"session {session_count} reported continue but no pending handoff remains"
+                f"session {session_count} reported continue but no queued handoff remains"
             )
 
-        if pending_after:
+        if queued_after:
             continue
 
         if outcome == "completed":
-            print("No pending handoff remains. Loop completed.")
+            print("No queued handoff remains. Loop completed.")
             return 0
 
     print(f"Reached session limit ({args.max_sessions}). Loop stopped.")
@@ -378,6 +406,8 @@ def build_prompt(repo: Path, session_input: SessionInput, session_result_file: P
         "- If you need human input, create one or more files under `questions/` and keep progressing as far as you can.",
         "- Only mark the session as `hard_blocked` when there is no meaningful work left without external input or access.",
         "- If follow-up work remains, create one or more handoff files under `handoff/`.",
+        "- Before ending the session, execute the repository's standard session-end SOP if one exists.",
+        "- Treat `session-result.json` as the final acknowledgement to the driver, not as a substitute for session-end cleanup.",
         "- Before ending the session, write the required JSON result file.",
         "",
         "Start by reading these context files if they exist:",
@@ -405,7 +435,7 @@ def build_prompt(repo: Path, session_input: SessionInput, session_result_file: P
             "{",
             '  "outcome": "continue | completed | hard_blocked | failed",',
             '  "summary": "short plain-language summary",',
-            '  "handoff_files": ["handoff/optional-file.pending.md"],',
+            '  "handoff_files": ["handoff/optional-file.md"],',
             '  "question_files": ["questions/optional-question.md"],',
             '  "block_reason": "required when outcome is hard_blocked"',
             "}",
@@ -450,6 +480,7 @@ def execute_session(
     input_file: Path,
     run_dir: Path,
     dry_run: bool,
+    extra_metadata: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], SessionRunArtifacts]:
     session_result_file = resolve_session_result_path(session_input, repo, run_dir)
     prompt_file = run_dir / "prompt.md"
@@ -483,6 +514,8 @@ def execute_session(
         "command": command,
         "dry_run": dry_run,
     }
+    if extra_metadata:
+        metadata.update(extra_metadata)
     metadata_file.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
     artifacts = SessionRunArtifacts(
@@ -498,14 +531,21 @@ def execute_session(
     if dry_run:
         return {}, artifacts
 
-    run_agent(command, prompt_file, events_file)
+    exit_code = run_agent(command, prompt_file, events_file)
 
     if not session_result_file.is_file():
-        raise DriverError(
-            f"agent finished without writing session result: {session_result_file}"
-        )
+        if exit_code != 0:
+            raise DriverError(
+                f"agent command failed with exit code {exit_code}. See {events_file}"
+            )
+        raise DriverError(f"agent finished without writing session result: {session_result_file}")
 
     result = validate_session_result(session_result_file)
+    if exit_code != 0:
+        print(
+            f"Agent exited with code {exit_code} after writing a valid session result; "
+            "treating the session as logically complete."
+        )
     return result, artifacts
 
 
@@ -546,20 +586,157 @@ def build_loop_session_input_payload(
     return payload
 
 
-def list_pending_handoffs(repo: Path) -> list[Path]:
-    handoff_dir = repo / "handoff"
-    if not handoff_dir.is_dir():
-        return []
+def ensure_handoff_dirs(repo: Path) -> dict[str, Path]:
+    queue_dir = (repo / "handoff").resolve()
+    inflight_dir = (repo / "handoff-run").resolve()
+    history_dir = (repo / "handoff-history").resolve()
+    for path in (queue_dir, inflight_dir, history_dir):
+        path.mkdir(parents=True, exist_ok=True)
+    return {"queue": queue_dir, "inflight": inflight_dir, "history": history_dir}
+
+
+def list_queued_handoffs(queue_dir: Path) -> list[Path]:
     return sorted(
-        handoff_dir.glob("*.pending.md"),
+        [
+            path
+            for path in queue_dir.iterdir()
+            if path.is_file() and not path.name.startswith(".")
+        ],
         key=lambda path: (path.stat().st_mtime, path.name),
         reverse=True,
     )
 
 
-def select_pending_handoff(repo: Path) -> Path | None:
-    pending = list_pending_handoffs(repo)
-    return pending[0] if pending else None
+def select_queued_handoff(queue_dir: Path) -> Path | None:
+    queued = list_queued_handoffs(queue_dir)
+    return queued[0] if queued else None
+
+
+def reserve_handoff(queued_path: Path, handoff_dirs: dict[str, Path]) -> HandoffReservation:
+    inflight_path = unique_destination(handoff_dirs["inflight"], queued_path.name)
+    queued_path.rename(inflight_path)
+    history_path = unique_destination(handoff_dirs["history"], inflight_path.name)
+    return HandoffReservation(
+        queued_path=queued_path,
+        inflight_path=inflight_path,
+        history_path=history_path,
+    )
+
+
+def archive_reserved_handoff(reservation: HandoffReservation) -> None:
+    if reservation.inflight_path.exists():
+        reservation.inflight_path.rename(reservation.history_path)
+
+
+def restore_reserved_handoff(reservation: HandoffReservation) -> None:
+    if reservation.inflight_path.exists():
+        queued_target = unique_destination(reservation.queued_path.parent, reservation.queued_path.name)
+        reservation.inflight_path.rename(queued_target)
+
+
+def recover_inflight_handoffs(repo: Path, runs_dir: Path, handoff_dirs: dict[str, Path]) -> None:
+    inflight_files = sorted(
+        [
+            path
+            for path in handoff_dirs["inflight"].iterdir()
+            if path.is_file() and not path.name.startswith(".")
+        ],
+        key=lambda path: path.name,
+    )
+    for inflight_path in inflight_files:
+        latest_run = find_latest_run_for_inflight_handoff(runs_dir, inflight_path)
+        reservation = HandoffReservation(
+            queued_path=handoff_dirs["queue"] / inflight_path.name,
+            inflight_path=inflight_path,
+            history_path=unique_destination(handoff_dirs["history"], inflight_path.name),
+        )
+        if latest_run is None:
+            restore_reserved_handoff(reservation)
+            print(f"Recovered orphan inflight handoff back to queue: {display_repo_relative(repo, reservation.queued_path.parent / inflight_path.name)}")
+            continue
+
+        session_result_file = latest_run / "session-result.json"
+        if session_result_file.is_file():
+            try:
+                validate_session_result(session_result_file)
+            except DriverError:
+                restore_reserved_handoff(reservation)
+                print(f"Recovered invalid inflight handoff back to queue: {display_repo_relative(repo, reservation.queued_path.parent / inflight_path.name)}")
+            else:
+                archive_reserved_handoff(reservation)
+                print(f"Archived recovered inflight handoff: {display_repo_relative(repo, reservation.history_path)}")
+            continue
+
+        restore_reserved_handoff(reservation)
+        print(f"Re-queued interrupted handoff: {display_repo_relative(repo, reservation.queued_path.parent / inflight_path.name)}")
+
+
+def recover_single_inflight_handoff(repo: Path, reservation: HandoffReservation, run_dir: Path) -> None:
+    session_result_file = run_dir / "session-result.json"
+    if session_result_file.is_file():
+        try:
+            validate_session_result(session_result_file)
+        except DriverError:
+            restore_reserved_handoff(reservation)
+            print(f"Recovered failed handoff back to queue: {display_repo_relative(repo, reservation.queued_path.parent / reservation.queued_path.name)}")
+        else:
+            archive_reserved_handoff(reservation)
+            print(f"Archived handoff after interrupted driver cleanup: {display_repo_relative(repo, reservation.history_path)}")
+        return
+
+    restore_reserved_handoff(reservation)
+    print(f"Re-queued interrupted handoff: {display_repo_relative(repo, reservation.queued_path.parent / reservation.queued_path.name)}")
+
+
+def find_latest_run_for_inflight_handoff(runs_dir: Path, inflight_path: Path) -> Path | None:
+    if not runs_dir.is_dir():
+        return None
+    run_dirs = sorted(
+        [path for path in runs_dir.iterdir() if path.is_dir()],
+        key=lambda path: path.name,
+        reverse=True,
+    )
+    for run_dir in run_dirs:
+        metadata_file = run_dir / "driver-metadata.json"
+        if not metadata_file.is_file():
+            continue
+        try:
+            metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        if metadata.get("input_handoff_file") == str(inflight_path):
+            return run_dir
+    return None
+
+
+def build_handoff_metadata(
+    repo: Path, reservation: HandoffReservation | None
+) -> dict[str, Any] | None:
+    if reservation is None:
+        return None
+    return {
+        "queued_handoff_file": str(reservation.queued_path),
+        "input_handoff_file": str(reservation.inflight_path),
+        "history_handoff_file": str(reservation.history_path),
+        "queued_handoff_file_repo_relative": display_repo_relative(repo, reservation.queued_path),
+        "input_handoff_file_repo_relative": display_repo_relative(repo, reservation.inflight_path),
+        "history_handoff_file_repo_relative": display_repo_relative(repo, reservation.history_path),
+    }
+
+
+def unique_destination(directory: Path, name: str) -> Path:
+    candidate = directory / name
+    if not candidate.exists():
+        return candidate
+
+    stem = candidate.stem
+    suffix = candidate.suffix
+    counter = 1
+    while True:
+        retry = directory / f"{stem}.{counter}{suffix}"
+        if not retry.exists():
+            return retry
+        counter += 1
 
 
 def display_repo_relative(repo: Path, path: Path) -> str:
@@ -593,22 +770,32 @@ def build_agent_command(
     raise DriverError(f"unsupported agent adapter: {agent}")
 
 
-def run_agent(command: list[str], prompt_file: Path, events_file: Path) -> None:
+def run_agent(command: list[str], prompt_file: Path, events_file: Path) -> int:
     with prompt_file.open("r", encoding="utf-8") as prompt_handle:
         with events_file.open("w", encoding="utf-8") as events_handle:
-            completed = subprocess.run(
+            process = subprocess.Popen(
                 command,
                 stdin=prompt_handle,
-                stdout=events_handle,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                check=False,
+                bufsize=1,
             )
+            printed_progress = False
 
-    if completed.returncode != 0:
-        raise DriverError(
-            f"agent command failed with exit code {completed.returncode}. See {events_file}"
-        )
+            assert process.stdout is not None
+            for line in process.stdout:
+                events_handle.write(line)
+                events_handle.flush()
+                print(".", end="", flush=True)
+                printed_progress = True
+
+            process.wait()
+
+            if printed_progress:
+                print("", flush=True)
+
+    return process.returncode
 
 
 def validate_session_result(session_result_file: Path) -> dict[str, Any]:

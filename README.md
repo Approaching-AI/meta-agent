@@ -49,7 +49,7 @@ meta-agent/scripts/meta-agent run-session \
 ```json
 {
   "goal_file": "goals/goal-session-driver.md",
-  "handoff_file": "handoff/2026-03-26-example.pending.md",
+  "handoff_file": "handoff/2026-03-26-example.md",
   "runtime_guide_file": ".meta-agent/AGENT-RUNTIME.md",
   "open_questions_dir": "questions"
 }
@@ -71,7 +71,7 @@ The required session result shape is:
 {
   "outcome": "continue | completed | hard_blocked | failed",
   "summary": "short plain-language summary",
-  "handoff_files": ["handoff/optional-file.pending.md"],
+  "handoff_files": ["handoff/optional-file.md"],
   "question_files": ["questions/optional-question.md"],
   "block_reason": "required when outcome is hard_blocked"
 }
@@ -92,7 +92,7 @@ meta-agent/scripts/meta-agent run-session \
   --dry-run
 ```
 
-To keep running until there is no pending handoff left, use `run-loop`:
+To keep running until there is no queued handoff left, use `run-loop`:
 
 ```bash
 meta-agent/scripts/meta-agent run-loop \
@@ -102,9 +102,14 @@ meta-agent/scripts/meta-agent run-loop \
 
 `run-loop` behavior:
 
-- picks the newest `handoff/*.pending.md` as the next session input
-- falls back to the configured goal file only for the first session when no pending handoff exists
+- picks the newest file in `handoff/` as the next queued handoff
+- moves the selected handoff into `handoff-run/` before starting the session
+- archives the consumed input into `handoff-history/` after the session finishes
+- on restart, inspects `handoff-run/` and either re-queues or archives interrupted work based on whether a valid `session-result.json` already exists
+- falls back to the configured goal file only for the first session when no queued handoff exists
 - keeps question files asynchronous; they do not stop the loop by themselves
-- stops on `hard_blocked`, on session failure, when no pending handoff remains, or when `--max-sessions` is reached
+- stops on `hard_blocked`, on session failure, when no queued handoff remains, or when `--max-sessions` is reached
 
 The goal file is not meant to be a task checklist. It is better treated as the long-lived explanation of what the system is trying to achieve, how the agent should interpret progress, and what boundaries it should respect.
+
+The session result file is also not the session-end SOP itself. The agent should execute the repository's standard session-end SOP first, then write `session-result.json` as the final acknowledgement back to the driver.
