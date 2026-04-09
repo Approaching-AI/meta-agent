@@ -1,6 +1,6 @@
 # SOP (Standard Operating Procedure)
 
-SOPs are distilled from daily notes and docs, and stored under the `doc/` folder. Both humans and agents should have a shared understanding of each SOP.
+SOPs are distilled from daily notes and docs, and stored under the `doc/` folder. They are not a separate top-level system in `meta-agent`; they are one kind of content inside `doc/`. Both humans and agents should have a shared understanding of each SOP.
 
 ## Structure
 

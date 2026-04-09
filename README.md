@@ -4,6 +4,13 @@ A collection of advisory guidelines for building AI agents.
 
 All content in this repository is **advisory, not prescriptive**. Agents should adapt these suggestions to their specific context, adopting what fits and setting aside what doesn't.
 
+At the highest level, `meta-agent` only needs two persistent parts:
+
+- `meta-log/`: the running record of what happened, what was decided, and what should happen next
+- `doc/`: the stable knowledge base for the project
+
+Everything else is optional support around those two folders.
+
 ## Quick Start
 
 In any git project, run:

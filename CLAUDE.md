@@ -4,6 +4,7 @@ These are advisory guidelines — adapt them to the current project context.
 
 Scope note:
 - These rules describe how `meta-agent` maintains its own internal records.
+- `meta-agent`'s core persistent structure is just `meta-log/` + `doc/`.
 - `meta-agent`'s internal session log is stored in `meta-log/`.
 - External/project agents that only use `meta-agent` as guidance should write project records to the host project's own `daily-notes/` convention, not to `meta-agent/meta-log/`.
 

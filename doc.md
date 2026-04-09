@@ -2,6 +2,8 @@
 
 A **doc** is a snapshot-style document that captures the overall understanding of a project at a given point in time.
 
+Within `meta-agent`, `doc/` is one of the only two core persistent folders. The other is `meta-log/`.
+
 ## Contrast with Daily Notes
 
 - **Daily notes** are incremental — they accumulate entries over time.
