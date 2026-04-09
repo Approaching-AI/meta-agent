@@ -1,0 +1,12 @@
+{
+  "operator": "ervinxie",
+  "goal_file": "goals/goal-session-driver.md",
+  "handoff_file": "handoff/2026-03-26-example.md",
+  "runtime_guide_file": ".meta-agent/AGENT-RUNTIME.md",
+  "open_questions_dir": "questions",
+  "open_answers_dir": "answers",
+  "additional_context_files": [
+    "doc/methodology.md"
+  ],
+  "additional_instructions": "Stay autonomous. If you need human input, create a question file and keep progressing unless there is truly nothing meaningful left to do."
+}
