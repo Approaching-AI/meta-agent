@@ -10,20 +10,15 @@ Scope note:
 Key references:
 - `runtime/AGENT-RUNTIME.md` — compact execution rules for external agents
 - `daily-notes.md` — how `meta-agent` keeps its internal `meta-log/`
-- `daily-notes.md` — how `meta-agent` keeps its internal `meta-log/`
 - `doc.md` — snapshot-style documentation
 - `sop.md` — standard operating procedures
 - `doc/methodology.md` — full methodology reference
 
 ## Session 开始流程
 
-1. **检查 `handoff/*.pending.md`** — 如果有 pending 的 handoff 文件，读取内容作为本次 session 的任务指引。
-2. **认领 handoff** — 立即将选中的文件从 `.pending.md` 重命名为 `.active.md`，然后 commit & push，防止其他 session 重复认领。
-3. **如果没有 pending handoff** — 等待用户给出指令。
-
-> **开放问题**：如果同时存在多个 pending 文件，agent 根据具体情况自行判断如何处理（全部执行、按优先级选择等），待后续积累经验后再标准化。
->
-> **并发说明**：rename + push 之间仍有短暂竞争窗口，但对于当前使用频率足够。如果未来出现实际冲突，再引入更强的锁机制。
+1. **检查最近上下文** — 先看最新的 `meta-log/`、相关 `doc/`、以及当前任务直接引用的文件，确认上一轮工作停在什么位置。
+2. **读取显式任务入口** — 如果用户、driver 或当前仓库里已有目标文件给了明确任务入口，就以它为准继续推进。
+3. **如果没有可执行入口** — 等待用户给出指令，不要为了“交接格式”而额外制造文件。
 
 ## Session 结束流程
 
@@ -31,14 +26,6 @@ Key references:
 
 1. **总结写入 meta-log** — 记录本次 session 做了什么、遇到什么问题、下一步是什么。Append 到当天的 `meta-log/` 文件。记录开头标注 `operator: <name>`（与 agent 协作的人）。如果不知道操作者是谁，主动询问，不能用 git config 或其他环境信息代替确认。
 2. **Commit & push** — 对本仓库执行 git commit 和 push，确保所有变更（meta-log、doc、代码等）持久化到远端。
-3. **判断是否需要后续 agent 接手** — 如果任务未完成且后续可由 agent 独立推进，将 handoff prompt 写入 `handoff/YYYY-MM-DD-<简短描述>.pending.md`。文件内容纯粹是 prompt，不加 frontmatter 或其他格式。Prompt 包含：任务背景（简要）、当前进度、下一步指令、需要注意的风险。后续 agent 运行在同一个仓库中，能访问 meta-log 和所有记录，所以 prompt 只需指明方向，不需重复已有上下文。如果任务已完成或需要人类介入，不生成 handoff 文件，在 meta-log 中说明即可。
+3. **为下一轮留下清晰入口** — 如果任务未完成但后续 agent 可以继续，就把“当前进度、下一步、关键风险”写清楚。默认直接写进 `meta-log/` 或相关目标文件；只有在确实需要时，才额外创建专门的交接文件。
 
 不要把 session end 委托给一键 helper script。结束流程依赖上下文判断，必须由 agent 自己完成。
-
-## Handoff 状态流转
-
-文件后缀表示状态：`.pending.md` → `.active.md` → `.done.md`
-
-- **pending → active**：session 认领时重命名，立即 commit & push。
-- **active → done**：任务完成时重命名。不限于特定流程阶段——agent 在工作过程中任何时候判断任务已完成，就执行 rename。
-- **其他 session 看到 `.active.md`**：说明已有 session 在处理，不要重复认领。

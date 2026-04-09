@@ -60,13 +60,13 @@ SOP 的创建由人决定，agent 可以建议。
 
 ## 工作流程
 
-Agent 由 prompt 启动，prompt 来自用户、自动化系统或 handoff 文件，内容是具体的工作任务。Agent 不需要启动时读取所有 daily notes 和 doc，而是根据当前任务按需查阅，自己判断该读什么。
+Agent 由 prompt 启动，prompt 来自用户、自动化系统或仓库中已有的任务上下文，内容是具体的工作任务。Agent 不需要启动时读取所有 daily notes 和 doc，而是根据当前任务按需查阅，自己判断该读什么。
 
 对于接入 `meta-agent` 的外部项目，建议再加一层运行时入口：把最常执行、最稳定的操作规则投影成宿主项目里的一个短文件，例如 `.meta-agent/AGENT-RUNTIME.md`。外部 agent 先读这个短文件，再按需打开 `meta-agent/doc/methodology.md` 看背景和边界情况。这样既保留了 submodule 更新能力，也减少了每次 session 都去翻完整方法论文档的成本。
 
-如果某些步骤已经足够稳定，也可以继续往前走半步：提供很薄的 helper scripts，专门处理文件发现、模板生成、rename 这类确定性动作，例如 `meta-agent/scripts/session-start.sh` 和 `meta-agent/scripts/session-end.sh`。这样能减少重复操作，但不替代 SOP 本身，因为优先级判断、handoff 内容撰写、是否需要交接，仍然必须由 agent 基于上下文来决定。
+如果某些步骤已经足够稳定，也可以继续往前走半步：提供很薄的 helper scripts，专门处理文件发现、模板生成、rename 这类确定性动作，例如 `meta-agent/scripts/session-start.sh` 和 `meta-agent/scripts/session-end.sh`。这样能减少重复操作，但不替代 SOP 本身，因为优先级判断、要不要留下额外上下文、以及下一轮该从哪里继续，仍然必须由 agent 基于上下文来决定。
 
-如果项目进一步进入自动化 driver 模式，也可以把更多事务性动作上移给 driver 处理，例如 handoff 的排队、消费、归档和 session-result 回写。此时 helper scripts 仍然适合吸收局部机械操作，但 session 的语义边界由 driver 和 SOP 共同定义。
+如果项目进一步进入自动化 driver 模式，也可以把更多事务性动作上移给 driver 处理，例如 session 输入的排队、消费、归档和 session-result 回写。此时 helper scripts 仍然适合吸收局部机械操作，但 session 的语义边界由 driver 和 SOP 共同定义。
 
 信息沉淀的路径：daily notes 积累实践经验，再提炼为 SOP。Doc 独立积累，来源不限。
 
@@ -80,32 +80,30 @@ Session 的意义不是形式化管理，而是控制上下文质量。很多任
 
 这里追求的不是把任务拆得越碎越好，而是让每个 session 都保持在 agent 的有效上下文容量内。只要当前 session 还在稳定推进，就继续；一旦上下文开始失控，就应该结束当前 session，把状态压缩给后续 session。
 
-## Handoff 的作用
+## 下一轮上下文
 
-Handoff 不是任务管理系统里的 ticket，而是下一个 session 的启动上下文。
+关键不是有没有一个叫 handoff 的文件，而是下一轮 session 是否拿得到足够清晰的启动上下文。
 
-在默认的简单模型里，可以先把 session 视为串行发生。当前 session 结束时，如果还有后续工作，就写 handoff；下一个 session 从 handoff 接续。至于 handoff 拆成几个、先做哪个、是否再继续拆分，先交给 agent 基于实际上下文判断，不预设过多规则。
+在默认的简单模型里，可以先把 session 视为串行发生。当前 session 结束时，如果还有后续工作，就把当前进度、下一步和风险压缩到一个稳定入口里；下一个 session 从这个入口接续。这个入口可以是最新的 `meta-log/`、一个目标文件、driver 输入，或者在确有必要时单独写出的交接文件。
 
-一个好的 handoff 至少满足两个条件：
+一个好的下一轮入口至少满足两个条件：
 
 - 可执行：下一个 session 不需要重新做大量问题定义，就能直接开始推进
 - 更收束：不是把当前混乱原样转交，而是把问题压缩成更小、更清楚、更稳定的入口
 
-如果当前 session 还写不出这样的 handoff，通常说明这轮工作还没有真正收束，不适合结束。
+如果当前 session 还写不出这样的入口，通常说明这轮工作还没有真正收束，不适合结束。
 
 ## Session 开始流程
 
 每次 agent session 开始时，执行以下流程：
 
-### 1. 检查 handoff 文件
+### 1. 检查最近可执行上下文
 
-默认的自动化模型里，`handoff/` 目录表示待消费的 handoff 栈；`handoff-run/` 表示正在被某个 session 消费的输入；`handoff-history/` 表示已消费归档。
+先看最新的 `meta-log/`、当前任务直接引用的目标文件，以及 driver 传入的 session 输入。如果其中已经有足够明确的任务入口，就从那里开始。
 
-driver 启动 session 时，先检查 `handoff/`。如果存在 queued handoff，选择其中一个，把它移到 `handoff-run/`，然后把该文件内容作为本次 session 的任务指引。
+如果系统仍在使用文件队列来喂给 driver，可以把 `handoff/`、`handoff-run/`、`handoff-history/` 视为一种实现细节，而不是方法论的核心。
 
-如果同时存在多个 queued handoff，agent 或 driver 根据当前上下文自行判断先处理哪个，不强制引入额外调度规则。
-
-### 2. 如果没有 queued handoff
+### 2. 如果没有明确入口
 
 等待用户给出指令。
 
@@ -137,30 +135,32 @@ Session 结束时，agent 应该主动判断：当前的工作是否已经完成
 - 任务是否还有未完成的部分
 - 是否已经形成了更稳定的阶段性结论，而不是停留在混乱中间态
 - 后续 session 是否有明确的下一步可以执行
-- 准备写下的 handoff 是否比当前上下文更收束
+- 准备留给下一轮的入口是否比当前上下文更收束
 
-如果判断需要后续 agent 接手，agent 将新的 handoff prompt 写入 `handoff/`。文件内容纯粹是 prompt，不加 frontmatter 或其他格式。Prompt 包含：
+如果判断需要后续 agent 接手，agent 应留下一个清晰的下一轮入口。默认优先直接写进 `meta-log/` 或当前目标文件；只有在确实需要额外分离任务输入时，才单独写一个交接文件。无论落在哪个载体里，都应包含：
 
 - 任务背景（简要，因为详细上下文在 daily notes 里）
 - 当前进度
 - 具体的下一步指令
 - 需要注意的关键信息或风险
 
-后续 agent 运行在同一个上下文体（同一个文件夹）中，能够访问 daily notes、doc 和所有历史记录。所以 handoff prompt 不需要重复整个历史，只需要给出下一个 session 的清晰入口。
+后续 agent 运行在同一个上下文体（同一个文件夹）中，能够访问 daily notes、doc 和所有历史记录。所以这段上下文不需要重复整个历史，只需要给出下一个 session 的清晰入口。
 
-如果任务已经完成，或者后续工作需要人类介入（比如需要做决策、需要外部资源），则不生成新的 handoff 文件，改为在 daily notes 中说明情况。
+如果任务已经完成，或者后续工作需要人类介入（比如需要做决策、需要外部资源），则不必额外生成交接文件，改为在 daily notes 中说明情况。
 
-## Handoff 事务语义
+## 文件化交接只是可选实现
 
-在 session-based 自动系统里，handoff 更接近“下一轮的输入包”，而不是长期存在的任务对象。更合适的做法不是让 agent 自己维护 `.pending / .done` 文件名状态，而是让 driver 维护一个最小事务语义：
+在 session-based 自动系统里，文件化交接更接近“下一轮的输入包”，而不是长期存在的任务对象。它可以存在，但不是必须存在。是否要把下一轮入口落成单独文件，取决于自动化系统是否真的从中受益。
+
+如果某个 driver 确实使用目录队列，那么可以约定：
 
 - `handoff/`: queued，等待未来 session 消费
 - `handoff-run/`: in-flight，已经被当前 session 取出但尚未归档
 - `handoff-history/`: archived，该输入对应的 session 已结束
 
-这个语义的重点不在“任务完成”，而在“输入是否已经被消费”。一个 handoff 一旦被某轮 session 作为输入使用，就不应该继续留在 `handoff/` 里。
+但这套目录语义只是某种 driver 的实现细节，不应反过来主导方法论本身。
 
-如果运行过程中意外中止，driver 在下一次启动时应先检查 `handoff-run/`：
+如果运行过程中意外中止，driver 在下一次启动时可以检查 `handoff-run/`：
 
 - 如果对应 run 已经写出有效的 `session-result.json`，说明 session 逻辑上已结束，可以把该 handoff 归档到 `handoff-history/`
 - 如果还没有有效的 `session-result.json`，说明这次消费被中断，应把该 handoff 放回 `handoff/` 重新排队
@@ -185,9 +185,9 @@ Session 结束时，agent 应该主动判断：当前的工作是否已经完成
 
 **开始工作：让 agent 接续之前的任务**
 
-> 检查 handoff 目录，有 queued 的任务就继续。
+> 看一下最新的 meta-log 和当前目标文件，继续上次停下来的地方。
 
-自动 driver 会检查 `handoff/`，取出一个 queued handoff 放入 `handoff-run/`，然后按该 prompt 启动新 session。如果没有 queued 文件，等待用户指令或回退到 goal file。
+如果你的自动 driver 仍使用文件队列，也可以继续从 `handoff/` 中取 session 输入；但那只是实现方式，不是必须的工作模型。
 
 也可以用传统方式：
 
@@ -197,7 +197,7 @@ Session 结束时，agent 应该主动判断：当前的工作是否已经完成
 
 > 结束 session。
 
-Agent 按照 session 结束流程执行：总结写入 daily notes → commit push → 判断是否需要生成 handoff 文件。
+Agent 按照 session 结束流程执行：总结写入 daily notes → commit push → 判断是否需要为下一轮留下更清晰的入口。
 
 **中途发现重要信息：立刻记录**
 

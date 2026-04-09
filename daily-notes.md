@@ -5,7 +5,6 @@ This file describes `meta-agent`'s own internal session log.
 `meta-log/` is the renamed form of `meta-agent`'s former internal daily notes, specifically to avoid confusion with a host project's `daily-notes/` directory.
 
 External/project agents that merely reference `meta-agent` should write records to the host project's own logging convention, not to `meta-agent/meta-log/`.
-
 Agent should maintain a history log for `meta-agent` itself. To facilitate collaboration with humans, append records to `meta-log/` by date。文件名格式为 `YYYY-MM-DD.md` 或 `YYYY-MM-DD-<简要主题>.md`，可根据内容选择是否加主题后缀。
 
 ## Principles

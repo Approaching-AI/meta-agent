@@ -33,6 +33,8 @@ bash meta-agent/scripts/session-start.sh
 bash meta-agent/scripts/session-end.sh
 ```
 
+These helpers are optional. The core idea is to preserve context and a clear next step across sessions, not to require a file-based handoff ritual.
+
 ## Autonomous Session Driver
 
 `meta-agent` now includes a thin agent-agnostic session driver. The standard call format is:
@@ -61,6 +63,7 @@ meta-agent/scripts/meta-agent run-session \
 
 `goal_file` is the long-lived goal file for the automation loop. `GOAL.md` is only the default filename. In practice, a topic-specific name such as `goals/goal-session-driver.md` is often better for tracking work over time.
 `operator` is the explicit human collaborator name for the session. In autonomous mode, prefer passing it from the driver instead of making the agent ask during session-end cleanup.
+`handoff_file` is the current field name in the driver contract, but conceptually it is just the optional session seed context for the next run, not a mandatory workflow object.
 `open_questions_dir` and `open_answers_dir` form the minimal human feedback loop. The default convention is that `questions/foo.md` should be answered by `answers/foo.md`.
 
 The driver turns that input into one autonomous agent session. It writes:
@@ -99,7 +102,7 @@ meta-agent/scripts/meta-agent run-session \
   --dry-run
 ```
 
-To keep running until there is no queued handoff left, use `run-loop`:
+To keep running until there is no queued session input left, use `run-loop`:
 
 ```bash
 meta-agent/scripts/meta-agent run-loop \
@@ -108,15 +111,15 @@ meta-agent/scripts/meta-agent run-loop \
   --operator ervinxie
 ```
 
-`run-loop` behavior:
+`run-loop` behavior in the current implementation:
 
-- picks the newest file in `handoff/` as the next queued handoff
-- moves the selected handoff into `handoff-run/` before starting the session
+- picks the newest file in `handoff/` as the next queued session input
+- moves the selected file into `handoff-run/` before starting the session
 - archives the consumed input into `handoff-history/` after the session finishes
 - on restart, inspects `handoff-run/` and either re-queues or archives interrupted work based on whether a valid `session-result.json` already exists
-- falls back to the configured goal file only for the first session when no queued handoff exists
+- falls back to the configured goal file only for the first session when no queued session input exists
 - keeps question files asynchronous; they do not stop the loop by themselves
-- stops on `hard_blocked`, on session failure, when no queued handoff remains, or when `--max-sessions` is reached
+- stops on `hard_blocked`, on session failure, when no queued session input remains, or when `--max-sessions` is reached
 - when `--operator` is provided, injects that exact human operator name into every session so the agent does not need to ask again during session-end SOP
 - when `question_files` are reported, prints a human-facing reminder showing which `answers/<same-basename>.md` file should be created next
 
