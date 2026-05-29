@@ -134,8 +134,16 @@ active_files=("$HANDOFF_DIR"/*.active.md)
 shopt -u nullglob
 
 printf 'Repo: %s\n' "$REPO_ROOT"
-list_handoffs "Pending handoffs" "${pending_files[@]}"
-list_handoffs "Active handoffs" "${active_files[@]}"
+if ((${#pending_files[@]} > 0)); then
+  list_handoffs "Pending handoffs" "${pending_files[@]}"
+else
+  list_handoffs "Pending handoffs"
+fi
+if ((${#active_files[@]} > 0)); then
+  list_handoffs "Active handoffs" "${active_files[@]}"
+else
+  list_handoffs "Active handoffs"
+fi
 printf '\n'
 
 case "$ACTION" in
