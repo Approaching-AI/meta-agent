@@ -2,72 +2,52 @@
 
 This file is the fast path for agents running in a project that integrates `meta-agent`.
 
-Read this file first. Only open `meta-agent/doc/methodology.md` when you need rationale, examples, or help with an edge case.
-
-If you were launched by an automation driver, also follow the driver prompt. In that mode, the driver input is part of the task context, and you must write the expected session result file before ending the session.
+Read this file first. Only open `meta-agent/doc/methodology.md` when you need rationale, examples, or help with an edge case. The host project’s future feature plans live in its own `doc/roadmap/` directory.
 
 ## Session Start
 
-Preferred helper:
-
-```bash
-bash meta-agent/scripts/session-start.sh
-```
-
-Useful variants:
-
-```bash
-bash meta-agent/scripts/session-start.sh --claim-first
-bash meta-agent/scripts/session-start.sh --claim <pending-file-or-basename>
-```
-
-The underlying SOP is:
-
-1. Check the latest `meta-log/`, the files directly referenced by the current task, and any explicit driver input.
+1. Check the latest `meta-log/`, the files directly referenced by the current task, and the user’s instructions.
 2. If there is already a clear task entry point, continue from there.
-3. If there is no clear entry point, wait for user instructions.
+3. If the current task has settled, the user asks for a future direction, or a new idea needs design, inspect the relevant parts of the host project’s `doc/roadmap/` as needed.
+4. If there is no clear entry point, wait for user instructions.
 
-Notes:
+Do not scan the entire Roadmap on every session. Roadmap is a pool of persisted future plans, not a queue or an automatic work scheduler.
 
-- Some automation setups still provide a queued file under names like `handoff/`; treat it as one possible task entry point, not as the core workflow.
+## Roadmap 累积
+
+When a new feature idea should not interrupt the current implementation:
+
+1. Use Plan Mode or a similar planning process to explore and rehearse the idea.
+2. Save the resulting plan under `doc/roadmap/<topic>/`, normally as `plan.md`.
+3. Keep working on the current task after the plan is persisted.
+
+The entry may contain any supporting material needed; there is no required template, depth, status, priority, or approval workflow. If the active Plan Mode cannot write files, save the agreed plan after returning to a write-enabled phase.
+
+When the current task is complete, the agent decides whether a Roadmap item is relevant enough to start. Keep the original plan as design history and record implementation results in the host project’s `meta-log/` or stable documentation.
 
 ## Session End
 
-Run this flow when the human explicitly asks to end the session.
-
-Preferred helper:
+Run this flow when the human explicitly asks to end the session:
 
 ```bash
 bash meta-agent/scripts/session-end.sh
 ```
 
-Useful variants:
+Useful variant:
 
 ```bash
 bash meta-agent/scripts/session-end.sh --append-daily --operator <name>
 ```
 
-These helpers only prepare files and deterministic updates. The agent still decides what summary to write, what the next step is, and when to commit or push.
+The helper only prepares a daily-notes template. The agent still decides what to record and when to commit or push.
 
-1. Append a summary to today's daily notes.
+1. Append a summary to the host project’s daily notes.
 2. Include `operator: <name>` at the start of the session entry. If unknown, ask.
 3. Record what was done, important conclusions, open problems, and the next step.
 4. Commit and push the repository so notes, docs, and code are persisted.
-5. Decide whether another agent session can continue the remaining work.
-6. If yes, leave a clear next-step entry in `meta-log/` or the active goal/task file.
-7. Only create a separate handoff file when a specific automation flow truly needs one.
-8. If the work is complete or requires human input next, say so in daily notes.
+5. If an unrelated future direction was designed during the session, make sure its Roadmap plan is saved.
 
-If you are in autonomous mode, run this same flow before writing the final `session-result.json`. Use the operator value provided by the driver when present, and treat any driver-managed handoff directory as implementation detail rather than the main abstraction.
-
-If the automation setup provides both `questions/` and `answers/` directories:
-
-- ask humans by writing files under `questions/`
-- consume human replies from `answers/`
-- use the same basename for a question and its answer
-- check for a matching answer before asking the same question again or declaring a hard block
-
-The session-result file is the final driver-facing acknowledgement after this flow is complete. It is not a substitute for the flow.
+If the work is complete or the next step requires human input, say so in the daily notes. Do not create queue files or handoff files.
 
 ## When To Read More
 
